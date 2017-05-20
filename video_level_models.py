@@ -110,9 +110,9 @@ class CNNModel(models.BaseModel):
 
   def create_model(self, model_input, vocab_size, l2_penalty=1e-8, **unused_params):
     with slim.arg_scope([slim.max_pool2d], kernel_size=[3, 3], stride=2):
-        net = slim.conv2d(model_input, 64, [5, 5])
+        net = slim.conv2d(model_input, 64, [4, 4])
         net = slim.max_pool2d(net)
-        net = slim.conv2d(net, 64, [5, 5])
+        net = slim.conv2d(net, 64, [4, 4])
         net = slim.max_pool2d(net)
         net = slim.flatten(net)
         net = slim.fully_connected(net, 192)
