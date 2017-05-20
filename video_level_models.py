@@ -124,6 +124,82 @@ class CNNModel(models.BaseModel):
 
 ## Video Level Models by vivekn/youtube-8m ##
 
+
+class MLPModel(models.BaseModel):
+  """MLP model with L2 regularization."""
+
+  def create_model(self, model_input, vocab_size, l2_penalty=1e-8, **unused_params):
+    """Creates a MLP model.
+    Args:
+      model_input: 'batch' x 'num_features' matrix of input features.
+      vocab_size: The number of classes in the dataset.
+    Returns:
+      A dictionary with a tensor containing the probability predictions of the
+      model in the 'predictions' key. The dimensions of the tensor are
+      batch_size x num_classes."""
+    output = model_utils.make_fully_connected_net(model_input,
+        [512, 256], vocab_size, l2_penalty)
+    return {"predictions": output}
+
+class MLPModelV2(models.BaseModel):
+    def create_model(self, model_input, vocab_size, l2_penalty=1e-8, **unused_params):
+        output = model_utils.make_fully_connected_net(model_input,
+            [784, 512, 256], vocab_size, l2_penalty)
+        return {"predictions": output}
+
+class MLPModel384(models.BaseModel):
+    def create_model(self, model_input, vocab_size, l2_penalty=1e-8, **unused_params):
+        output = model_utils.make_fully_connected_net(model_input,
+            [784, 512, 384], vocab_size, l2_penalty)
+        return {"predictions": output}
+
+class DeepMLPModel(models.BaseModel):
+    def create_model(self, model_input, vocab_size, l2_penalty=1e-8, **unused_params):
+        output = model_utils.make_fully_connected_net(model_input,
+            [784, 512, 512, 512, 256], vocab_size, l2_penalty)
+        return {"predictions": output}
+
+class BatchNormMLP(models.BaseModel):
+    def create_model(self, model_input, vocab_size, l2_penalty=1e-8, **unused_params):
+        output = model_utils.make_fully_connected_net(model_input,
+            [784, 512, 512, 512, 256], vocab_size, l2_penalty, batch_norm=True)
+        return {"predictions": output}
+
+class SkipConnections(models.BaseModel):
+    def create_model(self, model_input, vocab_size, l2_penalty=1e-8, **unused_params):
+        output = model_utils.make_fcnet_with_skips(model_input,
+            [784, 512, 512, 512, 256], [(0, 3), (2, 4)], vocab_size, l2_penalty)
+        return {"predictions": output}
+
+class DeepSkip(models.BaseModel):
+    def create_model(self, model_input, vocab_size, l2_penalty=1e-8, **unused_params):
+        output = model_utils.make_fcnet_with_skips(model_input,
+            [784] + [512]*8,
+            [(0, 3), (2, 4), (4, 6), (6, 8)], vocab_size, l2_penalty)
+        return {"predictions": output}
+
+class BigNN(models.BaseModel):
+    def create_model(self, model_input, vocab_size, l2_penalty=1e-8, **unused_params):
+        output = model_utils.make_fcnet_with_skips(model_input,
+            [1024] + [768]*8,
+            [(0, 3), (2, 4), (4, 6), (6, 8)], vocab_size, l2_penalty)
+        return {"predictions": output}
+
+class BiggerNN(models.BaseModel):
+    def create_model(self, model_input, vocab_size, l2_penalty=1e-8, **unused_params):
+        output = model_utils.make_fcnet_with_skips(model_input,
+            [1536] + [1024]*8,
+            [(0, 3), (2, 4), (4, 6), (6, 8)], vocab_size, l2_penalty)
+        return {"predictions": output}
+
+class DeeperSkip(models.BaseModel):
+    def create_model(self, model_input, vocab_size, l2_penalty=1e-8, **unused_params):
+        output = model_utils.make_fcnet_with_skips(model_input,
+            [784] + [512]*14,
+            [(0, 3), (2, 4), (4, 6), (6, 8), (8, 10), (10, 12), (12, 14)],
+            vocab_size, l2_penalty)
+        return {"predictions": output}
+
 class AvgPoolLSTM(models.BaseModel):
 
     def create_model(self,

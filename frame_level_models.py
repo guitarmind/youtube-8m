@@ -238,78 +238,141 @@ class LstmModel(models.BaseModel):
 
 ## Frame Level Models by vivekn/youtube-8m ##
 
-class MLPModel(models.BaseModel):
-  """MLP model with L2 regularization."""
+class AvgPoolLSTM(models.BaseModel):
 
-  def create_model(self, model_input, vocab_size, l2_penalty=1e-8, **unused_params):
-    """Creates a MLP model.
-    Args:
-      model_input: 'batch' x 'num_features' matrix of input features.
-      vocab_size: The number of classes in the dataset.
-    Returns:
-      A dictionary with a tensor containing the probability predictions of the
-      model in the 'predictions' key. The dimensions of the tensor are
-      batch_size x num_classes."""
-    output = model_utils.make_fully_connected_net(model_input,
-        [512, 256], vocab_size, l2_penalty)
-    return {"predictions": output}
+    def create_model(self,
+        model_input,
+        vocab_size,
+        num_frames,
+        pool_window=20,
+        l2_penalty=1e-8,
+        **unused_params):
+        input_4d = tf.transpose(tf.stack([model_input]), perm=[1, 2, 3, 0])
+        pooled_input = tf.squeeze(tf.nn.avg_pool(input_4d,
+            [1, pool_window, 1, 1], [1, pool_window, 1, 1], 'VALID'), axis=[3])
+        num_frames_scaled = tf.to_int32(
+            tf.ceil(tf.to_float(num_frames) / pool_window))
 
-class MLPModelV2(models.BaseModel):
-    def create_model(self, model_input, vocab_size, l2_penalty=1e-8, **unused_params):
-        output = model_utils.make_fully_connected_net(model_input,
-            [784, 512, 256], vocab_size, l2_penalty)
+        lstm_size = FLAGS.lstm_cells
+        lstm_cell = tf.contrib.rnn.BasicLSTMCell(lstm_size, forget_bias=1.0)
+        outputs, state = tf.nn.dynamic_rnn(lstm_cell, pooled_input,
+            sequence_length=num_frames_scaled, dtype=tf.float32)
+
+        output = utils.make_fully_connected_net(
+            tf.transpose(outputs, perm=[1, 0, 2])[-1],
+            [],
+            vocab_size,
+            l2_penalty
+        )
         return {"predictions": output}
 
-class MLPModel384(models.BaseModel):
-    def create_model(self, model_input, vocab_size, l2_penalty=1e-8, **unused_params):
-        output = model_utils.make_fully_connected_net(model_input,
-            [784, 512, 384], vocab_size, l2_penalty)
+class MeanLSTM(models.BaseModel):
+
+    def create_model(self,
+        model_input,
+        vocab_size,
+        num_frames,
+        pool_window=20,
+        l2_penalty=1e-8,
+        **unused_params):
+        input_4d = tf.transpose(tf.stack([model_input]), perm=[1, 2, 3, 0])
+        pooled_input = tf.squeeze(tf.nn.avg_pool(input_4d,
+            [1, pool_window, 1, 1], [1, pool_window, 1, 1], 'VALID'), axis=[3])
+        num_frames_scaled = tf.to_int32(
+            tf.ceil(tf.to_float(num_frames) / pool_window))
+
+        lstm_size = FLAGS.lstm_cells
+        lstm_cell = tf.contrib.rnn.BasicLSTMCell(lstm_size, forget_bias=1.0)
+        outputs, state = tf.nn.dynamic_rnn(lstm_cell, pooled_input,
+            sequence_length=num_frames_scaled, dtype=tf.float32)
+        lstm_out = tf.transpose(outputs, perm=[1, 0, 2])[-1]
+        mean_pooled = utils.get_avg_pooled(model_input, num_frames)
+
+        output = utils.make_fully_connected_net(
+            tf.concat([lstm_out, mean_pooled], 1),
+            [512, 256],
+            vocab_size,
+            l2_penalty
+        )
         return {"predictions": output}
 
-class DeepMLPModel(models.BaseModel):
-    def create_model(self, model_input, vocab_size, l2_penalty=1e-8, **unused_params):
-        output = model_utils.make_fully_connected_net(model_input,
-            [784, 512, 512, 512, 256], vocab_size, l2_penalty)
+class ConvolutionalLSTM(models.BaseModel):
+
+    def create_model(self,
+        model_input,
+        vocab_size,
+        num_frames,
+        pool_window=20,
+        l2_penalty=1e-8,
+        **unused_params):
+        input_4d = tf.transpose(tf.stack([model_input]), perm=[1, 2, 0, 3])
+
+        conv1 = utils.make_conv_relu_pool(input_4d, 3, 4, 256)
+        conv2 = utils.make_conv_relu_pool(conv1, 3, 4, 256)
+
+        lstm_size = FLAGS.lstm_cells
+        lstm_cell = tf.contrib.rnn.BasicLSTMCell(lstm_size, forget_bias=1.0)
+        outputs, state = tf.nn.dynamic_rnn(lstm_cell, tf.squeeze(conv2, 2),
+            dtype=tf.float32)
+        lstm_out = tf.transpose(outputs, perm=[1, 0, 2])[-1]
+        mean_pooled = utils.get_avg_pooled(model_input, num_frames)
+
+        output = utils.make_fully_connected_net(
+            tf.concat([lstm_out, mean_pooled], 1),
+            [784, 512, 256],
+            vocab_size,
+            l2_penalty
+        )
         return {"predictions": output}
 
-class BatchNormMLP(models.BaseModel):
-    def create_model(self, model_input, vocab_size, l2_penalty=1e-8, **unused_params):
-        output = model_utils.make_fully_connected_net(model_input,
-            [784, 512, 512, 512, 256], vocab_size, l2_penalty, batch_norm=True)
-        return {"predictions": output}
 
-class SkipConnections(models.BaseModel):
-    def create_model(self, model_input, vocab_size, l2_penalty=1e-8, **unused_params):
-        output = model_utils.make_fcnet_with_skips(model_input,
+class ConvolutionalLSTMSmall(models.BaseModel):
+
+    def create_model(self,
+        model_input,
+        vocab_size,
+        num_frames,
+        pool_window=20,
+        l2_penalty=1e-8,
+        **unused_params):
+        input_4d = tf.transpose(tf.stack([model_input]), perm=[1, 2, 0, 3])
+
+        conv1 = utils.make_conv_relu_pool(input_4d, 3, 4, 64, batch_norm=True)
+        conv2 = utils.make_conv_relu_pool(conv1, 3, 4, 64, batch_norm=True)
+        conv3 = utils.make_conv_relu_pool(conv2, 3, 4, 64, batch_norm=True)
+
+        lstm_size = FLAGS.lstm_cells
+        lstm_cell = tf.contrib.rnn.LSTMCell(lstm_size, forget_bias=1.0,
+            use_peepholes=True)
+        outputs, state = tf.nn.dynamic_rnn(lstm_cell, tf.squeeze(conv3, 2),
+            dtype=tf.float32)
+        lstm_out = tf.transpose(outputs, perm=[1, 0, 2])[-1]
+        mean_pooled = utils.get_avg_pooled(model_input, num_frames)
+
+        output = utils.make_fcnet_with_skips(
+            tf.concat([lstm_out, mean_pooled], 1),
             [784, 512, 512, 512, 256], [(0, 3), (2, 4)], vocab_size, l2_penalty)
         return {"predictions": output}
 
-class DeepSkip(models.BaseModel):
-    def create_model(self, model_input, vocab_size, l2_penalty=1e-8, **unused_params):
-        output = model_utils.make_fcnet_with_skips(model_input,
-            [784] + [512]*8,
+class FramePooler(models.BaseModel):
+    """
+    Simple 9 layer fully connected model with inputs as
+    (raw_features, max_pooled, min_pooled, avg_pooled, l2_norm)
+    """
+    def create_model(self,
+        model_input,
+        vocab_size,
+        num_frames,
+        l2_penalty=1e-8,
+        **unused_params):
+        avg_pooled = utils.get_avg_pooled(model_input, num_frames)
+        features = tf.concat([
+            avg_pooled,
+            utils.get_standard_dev_and_l2(model_input, num_frames, avg_pooled),
+            utils.get_min_max_pooled(model_input, num_frames),
+            tf.expand_dims(tf.to_float(num_frames), 1),
+        ], 1)
+        output = utils.make_fcnet_with_skips(features, [1024]+[768]*8,
             [(0, 3), (2, 4), (4, 6), (6, 8)], vocab_size, l2_penalty)
-        return {"predictions": output}
-
-class BigNN(models.BaseModel):
-    def create_model(self, model_input, vocab_size, l2_penalty=1e-8, **unused_params):
-        output = model_utils.make_fcnet_with_skips(model_input,
-            [1024] + [768]*8,
-            [(0, 3), (2, 4), (4, 6), (6, 8)], vocab_size, l2_penalty)
-        return {"predictions": output}
-
-class BiggerNN(models.BaseModel):
-    def create_model(self, model_input, vocab_size, l2_penalty=1e-8, **unused_params):
-        output = model_utils.make_fcnet_with_skips(model_input,
-            [1536] + [1024]*8,
-            [(0, 3), (2, 4), (4, 6), (6, 8)], vocab_size, l2_penalty)
-        return {"predictions": output}
-
-class DeeperSkip(models.BaseModel):
-    def create_model(self, model_input, vocab_size, l2_penalty=1e-8, **unused_params):
-        output = model_utils.make_fcnet_with_skips(model_input,
-            [784] + [512]*14,
-            [(0, 3), (2, 4), (4, 6), (6, 8), (8, 10), (10, 12), (12, 14)],
-            vocab_size, l2_penalty)
         return {"predictions": output}
 
