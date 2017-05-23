@@ -200,3 +200,135 @@ class DeeperSkip(models.BaseModel):
             vocab_size, l2_penalty)
         return {"predictions": output}
 
+
+## Video Level Models by umudev/youtube-8m ##
+
+
+class TwoLayerModel(models.BaseModel):
+  def create_model(self, model_input, vocab_size, num_hidden_units=2048, l2_penalty=1e-8, prefix='', **unused_params):
+    """Creates a logistic model.
+    Args:
+      model_input: 'batch' x 'num_features' matrix of input features.
+      vocab_size: The number of classes in the dataset.
+    Returns:
+      A dictionary with a tensor containing the probability predictions of the
+      model in the 'predictions' key. The dimensions of the tensor are
+      batch_size x num_classes."""
+    hidden1 = slim.fully_connected(
+        model_input, num_hidden_units, activation_fn=tf.nn.relu,
+        weights_regularizer=slim.l2_regularizer(l2_penalty), scope=prefix+'fc_1')
+
+    hidden1 = slim.dropout(hidden1, 0.5, scope=prefix+"dropout1")
+
+    output = slim.fully_connected(
+        hidden1, vocab_size, activation_fn=tf.nn.sigmoid,
+        weights_regularizer=slim.l2_regularizer(l2_penalty), scope=prefix+'fc_2')
+
+    weights_norm = tf.add_n(tf.losses.get_regularization_losses())
+
+    return {"predictions": output, "regularization_loss": weights_norm,"hidden_features": hidden1}
+    #return {"predictions": output}
+
+class NeuralAverageModel(models.BaseModel):
+  def create_model(self, model_input, vocab_size, l2_penalty=1e-8, **unused_params):
+    """Creates an Average prediction of NN models.
+    Args:
+      model_input: 'batch' x 'num_features' matrix of input features.
+      vocab_size: The number of classes in the dataset.
+    Returns:
+      A dictionary with a tensor containing the probability predictions of the
+      model in the 'predictions' key. The dimensions of the tensor are
+      batch_size x num_classes."""
+
+    output_2048a = TwoLayerModel().create_model(model_input, vocab_size,\
+                               num_hidden_units=2048, l2_penalty=l2_penalty, prefix='u2048a/')
+    output_2048b = TwoLayerModel().create_model(model_input, vocab_size,\
+                               num_hidden_units=2048, l2_penalty=l2_penalty, prefix='u2048b/')
+    output_2048c = TwoLayerModel().create_model(model_input, vocab_size,\
+                               num_hidden_units=2048, l2_penalty=l2_penalty, prefix='u2048c/')
+    output_2048d = TwoLayerModel().create_model(model_input, vocab_size,\
+                               num_hidden_units=2048, l2_penalty=l2_penalty, prefix='u2048d/')
+
+    t1 = output_2048a["predictions"]
+    t2 = output_2048b["predictions"]
+    t3 = output_2048c["predictions"]
+    t4 = output_2048d["predictions"]
+
+    output_sum = tf.add_n([t1, t2, t3, t4])
+
+    scalar = tf.constant(0.25)
+    output = tf.scalar_mul(scalar, output_sum)
+
+    return {"predictions": output}
+
+class StackModel(models.BaseModel):
+
+  def create_model(self, model_input, vocab_size, l2_penalty=1e-8, **unused_params):
+    """Creates a Stack of Neural Networks Model.
+    Args:
+      model_input: 'batch' x 'num_features' matrix of input features.
+      vocab_size: The number of classes in the dataset.
+    Returns:
+      A dictionary with a tensor containing the probability predictions of the
+      model in the 'predictions' key. The dimensions of the tensor are
+      batch_size x num_classes."""
+
+    output_2048a = TwoLayerModel().create_model(model_input, vocab_size,\
+                               num_hidden_units=2048, l2_penalty=l2_penalty, prefix='u2048a/')
+    output_2048b = TwoLayerModel().create_model(model_input, vocab_size,\
+                               num_hidden_units=2048, l2_penalty=l2_penalty, prefix='u2048b/')
+    output_2048c = TwoLayerModel().create_model(model_input, vocab_size,\
+                               num_hidden_units=2048, l2_penalty=l2_penalty, prefix='u2048c/')
+    output_2048d = TwoLayerModel().create_model(model_input, vocab_size,\
+                               num_hidden_units=2048, l2_penalty=l2_penalty, prefix='u2048d/')
+
+    t1 = output_2048a["hidden_features"]
+    t2 = output_2048a["hidden_features"]
+    t3 = output_2048a["hidden_features"]
+    t4 = output_2048a["hidden_features"]
+
+    stacked_features = tf.concat([t1, t2, t3, t4], 1)
+    stacked_fc1 = slim.fully_connected(
+      stacked_features,
+      2048,
+      activation_fn=tf.nn.relu,
+      weights_regularizer=slim.l2_regularizer(l2_penalty),
+      scope="Stack/fc1")
+    stacked_fc1 = slim.dropout(stacked_fc1, 0.5, scope="Stack/dropout1")
+    stacked_fc2 = slim.fully_connected(
+      stacked_fc1,
+      vocab_size,
+      activation_fn=None,
+      weights_regularizer=slim.l2_regularizer(l2_penalty),
+      scope="Stack/fc2")
+
+    output = tf.nn.sigmoid(stacked_fc2)
+
+    #return {"predictions": output, "regularization_loss": weights_norm}
+    return {"predictions": output}
+
+
+## Video Level Models by DeepVoltaire/youtube-8m ##
+
+
+class FCBNModel(models.BaseModel):
+  """Logistic model with L2 regularization."""
+
+  def create_model(self, model_input, vocab_size, nb_units=2000, **unused_params):
+    """Creates a logistic model.
+    Args:
+      model_input: 'batch' x 'num_features' matrix of input features.
+      vocab_size: The number of classes in the dataset.
+    Returns:
+      A dictionary with a tensor containing the probability predictions of the
+      model in the 'predictions' key. The dimensions of the tensor are
+      batch_size x num_classes."""
+    output = slim.fully_connected(model_input, nb_units, scope="fc1")
+    output = slim.batch_norm(output, scope="bn1")
+    output = slim.dropout(output, 0.5, scope="dropout1")
+    output = slim.fully_connected(output, nb_units, scope="fc2")
+    output = slim.batch_norm(output, scope="bn2")
+    output = slim.dropout(output, 0.5, scope="dropout2")
+    output = slim.fully_connected(
+        output, vocab_size, activation_fn=tf.nn.sigmoid, scope="fc3")
+    return {"predictions": output}
